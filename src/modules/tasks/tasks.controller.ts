@@ -13,7 +13,8 @@ import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 
 // This guard needs to be implemented or imported from the correct location
 // We're intentionally leaving it as a non-working placeholder
-class JwtAuthGuard {}
+// class JwtAuthGuard {}
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('tasks')
 @Controller('tasks')
