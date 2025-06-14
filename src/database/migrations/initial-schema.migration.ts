@@ -4,13 +4,18 @@ export class InitialSchema1615123456789 implements MigrationInterface {
   name = 'InitialSchema1615123456789';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+
+    await queryRunner.query(`
+      CREATE TYPE "user_role_enum" AS ENUM('USER', 'ADMIN')
+    `);
+
     await queryRunner.query(`
       CREATE TABLE "users" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "email" character varying NOT NULL,
         "name" character varying NOT NULL,
         "password" character varying NOT NULL,
-        "role" character varying NOT NULL DEFAULT 'user',
+        "role" "user_role_enum" NOT NULL DEFAULT 'USER',
         "created_at" TIMESTAMP NOT NULL DEFAULT now(),
         "updated_at" TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT "UQ_users_email" UNIQUE ("email"),

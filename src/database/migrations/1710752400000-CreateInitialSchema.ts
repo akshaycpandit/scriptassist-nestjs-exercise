@@ -11,7 +11,7 @@ export class CreateInitialSchema1710752400000 implements MigrationInterface {
         "email" varchar NOT NULL UNIQUE,
         "name" varchar NOT NULL,
         "password" varchar NOT NULL,
-        "role" varchar NOT NULL DEFAULT 'user',
+        "role" varchar NOT NULL DEFAULT 'USER',
         "created_at" TIMESTAMP NOT NULL DEFAULT now(),
         "updated_at" TIMESTAMP NOT NULL DEFAULT now()
       )
