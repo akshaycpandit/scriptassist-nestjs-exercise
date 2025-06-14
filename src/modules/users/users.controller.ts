@@ -10,19 +10,17 @@ import { RateLimit } from '@common/decorators/rate-limit.decorator';
 @ApiTags('users')
 @Controller('users')
 @UseInterceptors(ClassSerializerInterceptor)
+@UseGuards(JwtAuthGuard, RateLimitGuard)
+@RateLimit({ limit: 50, windowMs: 60000 })
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 20, windowMs: 60000 })
   @Post()
   @ApiOperation({ summary: 'Create a new user' })
   create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
 
-  @UseGuards(JwtAuthGuard, RateLimitGuard)
-  @RateLimit({ limit: 50, windowMs: 60000 })
   @ApiBearerAuth()
   @Get()
   @ApiOperation({ summary: 'Find all users' })
@@ -30,8 +28,6 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
-  @UseGuards(JwtAuthGuard, RateLimitGuard)
-  @RateLimit({ limit: 30, windowMs: 60000 })
   @ApiBearerAuth()
   @Get(':id')
   @ApiOperation({ summary: 'Find a user by id' })
@@ -39,8 +35,6 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
-  @UseGuards(JwtAuthGuard, RateLimitGuard)
-  @RateLimit({ limit: 10, windowMs: 60000 })
   @ApiBearerAuth()
   @Patch(':id')
   @ApiOperation({ summary: 'Update a user' })
@@ -48,8 +42,6 @@ export class UsersController {
     return this.usersService.update(id, updateUserDto);
   }
 
-  @UseGuards(JwtAuthGuard, RateLimitGuard)
-  @RateLimit({ limit: 10, windowMs: 60000 })
   @ApiBearerAuth()
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a user' })
