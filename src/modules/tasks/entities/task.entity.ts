@@ -1,9 +1,13 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { TaskStatus } from '../enums/task-status.enum';
 import { TaskPriority } from '../enums/task-priority.enum';
 
 @Entity('tasks')
+@Index(['userId'])
+@Index(['status'])
+@Index(['priority'])
+@Index(['dueDate'])
 export class Task {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -28,13 +32,13 @@ export class Task {
   })
   priority: TaskPriority;
 
-  @Column({ name: 'due_date', nullable: true })
+  @Column({ name: 'due_date', nullable: true, type: 'timestamp' })
   dueDate: Date;
 
   @Column({ name: 'user_id' })
   userId: string;
 
-  @ManyToOne(() => User, (user) => user.tasks)
+  @ManyToOne(() => User, (user) => user.tasks, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user: User;
 
