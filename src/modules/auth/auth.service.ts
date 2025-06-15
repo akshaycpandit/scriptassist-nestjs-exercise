@@ -4,6 +4,9 @@ import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import * as bcrypt from 'bcrypt';
+import { UserRole } from '@modules/users/enums/user-role.enum';
+import { User } from '@modules/users/entities/user.entity';
+import { UserResponseDto } from '@modules/users/dto/user-response.dto';
 
 @Injectable()
 export class AuthService {
@@ -12,7 +15,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto): Promise<{ user: UserResponseDto; access_token: string }> {
     const { email, password } = loginDto;
 
     const user = await this.usersService.findByEmail(email);
@@ -27,23 +30,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid password');
     }
 
-    const payload = { 
-      sub: user.id, 
-      email: user.email, 
-      role: user.role
-    };
-
     return {
-      access_token: this.jwtService.sign(payload),
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      },
+      access_token: this.jwtService.sign(user),
+      user: new UserResponseDto(user),
     };
   }
 
-  async register(registerDto: RegisterDto) {
+  async register(registerDto: RegisterDto): Promise<{ user: UserResponseDto; token: string }> {
     const existingUser = await this.usersService.findByEmail(registerDto.email);
 
     if (existingUser) {
@@ -52,25 +45,25 @@ export class AuthService {
 
     const user = await this.usersService.create(registerDto);
 
-    const token = this.generateToken(user.id);
+    const token = this.generateToken(user);
 
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
+      user: new UserResponseDto(user),
       token,
     };
   }
 
-  private generateToken(userId: string) {
-    const payload = { sub: userId };
+  private generateToken(user: { id: string; email: string; role: string }) {
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
     return this.jwtService.sign(payload);
   }
 
-  async validateUser(userId: string): Promise<any> {
+  async validateUser(userId: string): Promise<User | null> {
     const user = await this.usersService.findOne(userId);
     
     if (!user) {
