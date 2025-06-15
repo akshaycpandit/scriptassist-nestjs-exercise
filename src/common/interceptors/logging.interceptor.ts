@@ -24,6 +24,7 @@ export class LoggingInterceptor implements NestInterceptor {
     
     // Basic implementation (to be enhanced by candidates)
     // this.logger.log(`Request: ${method} ${url}`);
+    this.logger.log(`User Request: ${JSON.stringify(req.user)}`);
     this.logger.log(`Request: ${method} ${url} User: ${userId}`);
     this.logger.debug(`Headers: ${JSON.stringify(req.headers)}`);
     this.logger.debug(`Query: ${JSON.stringify(req.query)}`);
