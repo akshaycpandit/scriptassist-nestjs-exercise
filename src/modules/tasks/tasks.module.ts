@@ -11,6 +11,9 @@ import { Task } from './entities/task.entity';
     BullModule.registerQueue({
       name: 'task-processing',
     }),
+    BullModule.registerQueue({
+      name: 'rate-limit',
+    }),
   ],
   controllers: [TasksController],
   providers: [TasksService],
