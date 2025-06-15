@@ -42,6 +42,10 @@ export class OverdueTasksService {
     
     // Add tasks to the queue to be processed
     // TODO: Implement adding tasks to the queue
+    await this.taskQueue.addBulk(overdueTasks.map((task) => ({ 
+      name: 'overdue-tasks-notification', 
+      data: { taskId: task.id } 
+    })));
     
     this.logger.debug('Overdue tasks check completed');
   }
