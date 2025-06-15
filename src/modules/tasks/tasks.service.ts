@@ -9,6 +9,9 @@ import { Queue } from 'bullmq';
 import { TaskStatus } from './enums/task-status.enum';
 import { PaginatedResponse, PaginationOptions } from '../../types/pagination.interface';
 import { TaskPriority } from './enums/task-priority.enum';
+import { TaskResponseDto } from './dto/task-response.dto';
+import { plainToInstance } from 'class-transformer';
+import { TaskStatsResponseDto } from './dto/task-stats-response.dto';
 
 @Injectable()
 export class TasksService {
@@ -21,7 +24,7 @@ export class TasksService {
 
    private readonly logger = new Logger(TasksService.name);
 
-  async create(createTaskDto: CreateTaskDto): Promise<Task> {
+  async create(createTaskDto: CreateTaskDto): Promise<TaskResponseDto> {
     // Single transaction
     return await this.tasksRepository.manager.transaction(async (manager) => {
     const task = manager.create(Task, createTaskDto);
@@ -60,7 +63,7 @@ export class TasksService {
 
   async findAll(
     params: PaginationOptions & { status?: string; priority?: string }
-  ): Promise<PaginatedResponse<Task>> {
+  ): Promise<PaginatedResponse<TaskResponseDto>> {
     
     const { status, priority, page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'DESC' } = params;
     
@@ -72,10 +75,12 @@ export class TasksService {
     query.orderBy(`task.${sortBy}`, sortOrder);
     query.skip((page - 1) * limit).take(limit);
 
-    const [data, total] = await query.getManyAndCount();
+    let [data, total] = await query.getManyAndCount();
+    
+    const taskResponse = plainToInstance(TaskResponseDto, data);
 
     return {
-      data,
+      data: taskResponse,
       meta: {
         total,
         page,
@@ -91,16 +96,16 @@ export class TasksService {
     // });
   }
 
-  async getStats(): Promise<Record<string, number>> {
+  async getStats(): Promise<TaskStatsResponseDto> {
 
-    const stats = await this.tasksRepository
+    let stats = await this.tasksRepository
       .createQueryBuilder('task')
       .select([
         'COUNT(*) as total',
-        `SUM(CASE WHEN task.status = :completed THEN 1 ELSE 0 END) as completed`,
-        `SUM(CASE WHEN task.status = :inProgress THEN 1 ELSE 0 END) as inProgress`,
-        `SUM(CASE WHEN task.status = :pending THEN 1 ELSE 0 END) as pending`,
-        `SUM(CASE WHEN task.priority = :high THEN 1 ELSE 0 END) as highPriority`,
+        `COALESCE(SUM(CASE WHEN task.status = :completed THEN 1 ELSE 0 END), 0) as completed`,
+        `COALESCE(SUM(CASE WHEN task.status = :inProgress THEN 1 ELSE 0 END), 0) as inProgress`,
+        `COALESCE(SUM(CASE WHEN task.status = :pending THEN 1 ELSE 0 END), 0) as pending`,
+        `COALESCE(SUM(CASE WHEN task.priority = :high THEN 1 ELSE 0 END), 0) as highPriority`,
       ])
       .setParameters({
         completed: TaskStatus.COMPLETED,
@@ -110,17 +115,19 @@ export class TasksService {
       })
       .getRawOne();
 
+    stats = plainToInstance(TaskStatsResponseDto, stats);
+
     // Cast values to number because getRawOne returns string values from DB
     return {
       total: parseInt(stats.total, 10),
       completed: parseInt(stats.completed, 10),
-      inProgress: parseInt(stats.inProgress, 10),
+      inProgress: parseInt(stats.inprogress, 10),
       pending: parseInt(stats.pending, 10),
-      highPriority: parseInt(stats.highPriority, 10),
+      highPriority: parseInt(stats.highpriority, 10),
     };
   }
 
-  async findOne(id: string): Promise<Task> {
+  async findOne(id: string): Promise<TaskResponseDto> {
 
     const task = await this.tasksRepository.findOne({
       where: { id },
@@ -145,7 +152,7 @@ export class TasksService {
     // })) as Task;
   }
 
-  async update(id: string, updateTaskDto: UpdateTaskDto): Promise<Task> {
+  async update(id: string, updateTaskDto: UpdateTaskDto): Promise<TaskResponseDto> {
 
     // Encapsulate complete process in a transaction
     return await this.tasksRepository.manager.transaction(async (manager) => {
@@ -237,7 +244,7 @@ export class TasksService {
     return this.tasksRepository.save(task);
   }
 
-  async batchProcess(taskIds: string[], action: string): Promise<{ taskId: string, success: boolean, result?: any, error?: string }[]> {
+  async batchProcess(taskIds: string[], action: string): Promise<{ taskIds: string, success: boolean, result?: any, error?: string }> {
 
     let results: any[] = [];
 
@@ -250,12 +257,11 @@ export class TasksService {
           .whereInIds(taskIds)
           .execute();
 
-        results = taskIds.map(id => ({
-          taskId: id,
+        return {
+          taskIds: taskIds.join(', '),
           success: true,
           result: completeResult,
-        }));
-        break;
+        };
 
       case 'delete':
         const deleteResult = await this.tasksRepository
@@ -265,17 +271,14 @@ export class TasksService {
           .whereInIds(taskIds)
           .execute();
 
-        results =  taskIds.map(id => ({
-          taskId: id,
+        return {
+          taskIds: taskIds.join(', '),
           success: true,
           result: deleteResult,
-        }));
-        break;
+        };
 
       default:
         throw new BadRequestException(`Unknown action: ${action}`);
     }
-
-    return results;
   }
 }
