@@ -16,11 +16,17 @@ import { HttpResponse } from '../../types/http-response.interface';
 // class JwtAuthGuard {}
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BatchProcessDto } from './dto/batch-process.dto';
+import { TaskResponseDto } from './dto/task-response.dto';
+import { plainToInstance } from 'class-transformer';
+import { TaskStatsResponseDto } from './dto/task-stats-response.dto';
+import { Roles } from '@common/decorators/roles.decorator';
+import { RolesGuard } from '@common/guards/roles.guard';
 
 @ApiTags('tasks')
 @Controller('tasks')
 @UseInterceptors(ClassSerializerInterceptor)
-@UseGuards(JwtAuthGuard, RateLimitGuard)
+@UseGuards(JwtAuthGuard, RateLimitGuard, RolesGuard)
+@Roles('USER')
 @RateLimit({ limit: 100, windowMs: 60000 })
 @ApiBearerAuth()
 export class TasksController {
@@ -34,10 +40,11 @@ export class TasksController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new task' })
-  async create(@Body() createTaskDto: CreateTaskDto): Promise<HttpResponse<Task>> {
+  async create(@Body() createTaskDto: CreateTaskDto): Promise<HttpResponse<TaskResponseDto>> {
     const task = await this.tasksService.create(createTaskDto);
 
     return {
+      statusCode: HttpStatus.CREATED,
       success: true,
       data: task,
       message: 'Task created successfully',
@@ -54,15 +61,17 @@ export class TasksController {
   @ApiQuery({ name: 'sortOrder', required: false })
   async findAll(
     @Query() queryParams: PaginationOptions & { status?: string; priority?: string }
-  ): Promise<HttpResponse<PaginatedResponse<Task>>> {
+  ): Promise<HttpResponse<PaginatedResponse<TaskResponseDto>>> {
 
-    const paginatedTasks = await this.tasksService.findAll(queryParams);
+    let paginatedTasks = await this.tasksService.findAll(queryParams);
+    paginatedTasks.data = plainToInstance(TaskResponseDto, paginatedTasks.data);
 
     return {
-    success: true,
-    data: paginatedTasks,
-    message: 'Tasks fetched successfully',
-  };
+      statusCode: HttpStatus.OK,
+      success: true,
+      data: paginatedTasks,
+      message: 'Tasks fetched successfully',
+    };
     // return this.tasksService.findAll( { status, priority }, paginationOptions);
     // Inefficient approach: Inconsistent pagination handling
     // if (page && !limit) {
@@ -97,11 +106,12 @@ export class TasksController {
 
   @Get('stats')
   @ApiOperation({ summary: 'Get task statistics' })
-  async getStats(): Promise<HttpResponse<Record<string, number>>> {
+  async getStats(): Promise<HttpResponse<TaskStatsResponseDto>> {
 
     const stats = await this.tasksService.getStats();
 
     return {
+      statusCode: HttpStatus.OK,
       success: true,
       data: stats,
       message: 'Task statistics retrieved successfully',
@@ -124,11 +134,12 @@ export class TasksController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Find a task by ID' })
-  async findOne(@Param('id') id: string): Promise<HttpResponse<Task>> {
+  async findOne(@Param('id') id: string): Promise<HttpResponse<TaskResponseDto>> {
 
     const task = await this.tasksService.findOne(id);
 
     return {
+      statusCode: HttpStatus.OK,
       success: true,
       data: task,
       message: 'Task fetched successfully',
@@ -146,12 +157,13 @@ export class TasksController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a task' })
-  async update(@Param('id') id: string, @Body() updateTaskDto: UpdateTaskDto): Promise<HttpResponse<Task>> {
+  async update(@Param('id') id: string, @Body() updateTaskDto: UpdateTaskDto): Promise<HttpResponse<TaskResponseDto>> {
     // No validation if task exists before update
     // Validation moved to service layer
     const updatedTask = await this.tasksService.update(id, updateTaskDto);
 
     return {
+      statusCode: HttpStatus.OK,
       success: true,
       message: `Task with ID ${id} updated successfully`,
       data: updatedTask,
@@ -166,6 +178,7 @@ export class TasksController {
     const removedTask = await this.tasksService.remove(id);
 
     return {
+      statusCode: HttpStatus.OK,
       success: true,
       message: `Task with ID ${id} deleted successfully`,
       data: removedTask,
@@ -174,12 +187,13 @@ export class TasksController {
 
   @Post('batch')
   @ApiOperation({ summary: 'Batch process multiple tasks' })
-  async batchProcess(@Body() operations: BatchProcessDto): Promise<HttpResponse<{ taskId: string; success: boolean; result?: any; error?: string }[]>> {
+  async batchProcess(@Body() operations: BatchProcessDto): Promise<HttpResponse<{ taskIds: string; success: boolean; result?: any; error?: string }>> {
 
     const { tasks: taskIds, action } = operations;
     const results = await this.tasksService.batchProcess(taskIds, action);
 
     return {
+      statusCode: HttpStatus.OK,
       success: true,
       message: `Batch ${action} operation completed`,
       data: results,
