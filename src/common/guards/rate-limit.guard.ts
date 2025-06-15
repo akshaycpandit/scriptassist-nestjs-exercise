@@ -27,9 +27,9 @@ export class RateLimitGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const ip = request.ip;
 
-    const meta = this.reflector.get<RateLimitOptions>(
+    const meta = this.reflector.getAllAndOverride<RateLimitOptions>(
       RATE_LIMIT_KEY,
-      context.getHandler()
+      [context.getHandler(), context.getClass()],
     ) || { limit: 100, windowMs: 60000 };
 
     return await this.handleRateLimit(ip, meta.limit, meta.windowMs);
@@ -38,6 +38,7 @@ export class RateLimitGuard implements CanActivate {
   }
 
   private async handleRateLimit(ip: string, limit: number, windowMs: number): Promise<boolean> {
+    // console.log("Inside rate limit guard", limit, windowMs, ip);
     const now = Date.now();
     const hashedIp = this.hashIp(ip);
     const key = `rate-limit:${hashedIp}`;
