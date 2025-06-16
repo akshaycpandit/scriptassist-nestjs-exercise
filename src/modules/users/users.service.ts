@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -27,7 +27,7 @@ export class UsersService {
 
     // Hash the password before saving
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    const user = await this.usersRepository.create({
+    const user = this.usersRepository.create({
       ...createUserDto,
       password: hashedPassword,
     });
@@ -50,7 +50,11 @@ export class UsersService {
     return await this.usersRepository.findOne({ where: { email } });
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+  async update(
+    id: string, 
+    updateUserDto: UpdateUserDto, 
+    currentUser: { id: string, role: string }
+  ): Promise<User> {
     // Validate password length
     if( updateUserDto?.password && updateUserDto.password.length < 8) {
       throw new BadRequestException('Password must be at least 8 characters long');
@@ -63,17 +67,29 @@ export class UsersService {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
 
-     // Before creating a user, check if email already exists
-    if (existingUser.email === updateUserDto.email) {
-      throw new UnauthorizedException('Email already exists');
-    }
+    //  // Before creating a user, check if email already exists
+    // if (updateUserDto.email && updateUserDto.email === existingUser.email) {
+    //   throw new UnauthorizedException('Email already exists');
+    // }
     
     if (updateUserDto.password) {
       updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
 
-      // Old password check
-      if( updateUserDto.password === existingUser.password) {
-        throw new BadRequestException('New password cannot be the same as the old password');
+      // // Old password check
+      // if( updateUserDto.password === existingUser.password) {
+      //   throw new BadRequestException('New password cannot be the same as the old password');
+      // }
+    }
+
+    // Enforce ownership logic
+    if (currentUser.role !== 'ADMIN') {
+      if (currentUser.id !== id) {
+        throw new ForbiddenException('You can only update your own account');
+      }
+
+      // Prevent regular user from changing role
+      if ('role' in updateUserDto) {
+        delete updateUserDto.role;
       }
     }
     
