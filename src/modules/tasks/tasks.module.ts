@@ -7,6 +7,7 @@ import { Task } from './entities/task.entity';
 import { CommandHandler, CqrsModule } from '@nestjs/cqrs';
 import { CreateTaskHandler } from './commands/handlers/create-task.handler';
 import { GetTasksHandler } from './queries/handlers/get-tasks.handler';
+import { GetTaskStatsHandler } from './queries/handlers/get-tasks-stats.handler';
 
 const commandHandlers = [
   CreateTaskHandler,
@@ -15,6 +16,7 @@ const commandHandlers = [
 
 const queryHandlers = [
   GetTasksHandler,
+  GetTaskStatsHandler,
   // Add others like GetTaskByIdHandler, GetStatsHandler
 ];
 @Module({
