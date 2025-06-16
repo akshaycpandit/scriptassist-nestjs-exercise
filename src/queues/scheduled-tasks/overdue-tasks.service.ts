@@ -31,21 +31,44 @@ export class OverdueTasksService {
     
     // Example implementation (incomplete - to be implemented by candidates)
     const now = new Date();
+
+    // Check tasks which are overdue and not completed
     const overdueTasks = await this.tasksRepository.find({
       where: {
         dueDate: LessThan(now),
-        status: TaskStatus.PENDING,
+        status: TaskStatus.PENDING || TaskStatus.IN_PROGRESS,
       },
     });
     
     this.logger.log(`Found ${overdueTasks.length} overdue tasks`);
     
+    
     // Add tasks to the queue to be processed
-    // TODO: Implement adding tasks to the queue
-    await this.taskQueue.addBulk(overdueTasks.map((task) => ({ 
-      name: 'overdue-tasks-notification', 
-      data: { taskId: task.id } 
-    })));
+    if( overdueTasks.length === 0) {
+      this.logger.debug('No overdue tasks found');
+      return {
+        success: false,
+        message: "No overdue tasks found",
+      };
+    }
+    
+    const taskIds = overdueTasks.map(task => task.id);
+
+    // Chunk into batches of 10
+    const batchSize = 10; // Can be adjusted from .env
+
+    const batches = [];
+    for (let i = 0; i < taskIds.length; i += batchSize) {
+      batches.push(taskIds.slice(i, i + batchSize));
+    }
+    
+    // Load in queue as batches
+    await this.taskQueue.addBulk(
+      batches.map((batchTaskIds) => ({
+        name: 'overdue-tasks-notification',
+        data: { taskIds: batchTaskIds },
+      }))
+    );
     
     this.logger.debug('Overdue tasks check completed');
   }
