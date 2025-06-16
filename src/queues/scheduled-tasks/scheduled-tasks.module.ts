@@ -11,6 +11,14 @@ import { Task } from '@modules/tasks/entities/task.entity';
     ScheduleModule.forRoot(),
     BullModule.registerQueue({
       name: 'task-processing',
+      defaultJobOptions: {
+        removeOnComplete: true, // Automatically remove completed jobs
+        attempts: 3, // Retry up to 3 times on failure
+        backoff: {
+          type: 'exponential', // Exponential backoff for retries
+          delay: 2000, // Initial delay of 2 seconds
+        },
+      }
     }),
     TasksModule,
     TypeOrmModule.forFeature([Task]), // 1st Error! -> TaskRepo not imported
