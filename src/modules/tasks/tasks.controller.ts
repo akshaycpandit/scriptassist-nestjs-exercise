@@ -20,6 +20,10 @@ import { TaskStatsResponseDto } from './dto/task-stats-response.dto';
 import { Roles } from '@common/decorators/roles.decorator';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
+import { CreateTaskCommand } from './commands/impl/create-task.command';
+import { CommandBus, QueryBus } from '@nestjs/cqrs';
+import { GetTasksQuery } from './queries/impl/get-tasks.query';
+import { GetTaskStatsQuery } from './queries/impl/get-task-stats.query';
 
 @ApiTags('tasks')
 @Controller('tasks')
@@ -31,6 +35,8 @@ import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
+    private readonly commandBus: CommandBus, // CommandBus for CQRS pattern
+    private readonly queryBus: QueryBus, // QueryBus for CQRS pattern
     // Repository moved to service layer
   ) {}
 
@@ -38,14 +44,15 @@ export class TasksController {
   @ApiOperation({ summary: 'Create a new task' })
   @Roles('ADMIN')
   async create(@Body() createTaskDto: CreateTaskDto): Promise<HttpResponse<TaskResponseDto>> {
-    const task = await this.tasksService.create(createTaskDto);
+    // const task = await this.tasksService.create(createTaskDto);
+    const taskResponse = await this.commandBus.execute(new CreateTaskCommand(createTaskDto));
     
-    const taskResponseDto = plainToInstance(TaskResponseDto, task);
+    // const taskResponseDto = plainToInstance(TaskResponseDto, task);
 
     return {
       statusCode: HttpStatus.CREATED,
       success: true,
-      data: taskResponseDto,
+      data: taskResponse,
       message: 'Task created successfully',
     };
   }
@@ -64,8 +71,12 @@ export class TasksController {
     @CurrentUser() user: { id: string; role: string }
   ): Promise<HttpResponse<PaginatedResponse<TaskResponseDto>>> {
 
-    let paginatedTasks = await this.tasksService.findAll(queryParams, user);
-    paginatedTasks.data = plainToInstance(TaskResponseDto, paginatedTasks.data);
+    // let paginatedTasks = await this.tasksService.findAll(queryParams, user);
+     const paginatedTasks = await this.queryBus.execute(
+      new GetTasksQuery(queryParams, user)
+    );
+
+    // paginatedTasks.data = plainToInstance(TaskResponseDto, paginatedTasks.data);
 
     return {
       statusCode: HttpStatus.OK,
@@ -82,13 +93,16 @@ export class TasksController {
     @CurrentUser() user: { id: string; role: string }
   ): Promise<HttpResponse<TaskStatsResponseDto>> {
 
-    const stats = await this.tasksService.getStats(user);
-    const statsResponseDto = plainToInstance(TaskStatsResponseDto, stats);
+    // const stats = await this.tasksService.getStats(user);
+    const stats = await this.queryBus.execute(
+      new GetTaskStatsQuery(user)
+    );
+    // const statsResponseDto = plainToInstance(TaskStatsResponseDto, stats);
 
     return {
       statusCode: HttpStatus.OK,
       success: true,
-      data: statsResponseDto,
+      data: stats,
       message: 'Task statistics retrieved successfully',
     };
   }
