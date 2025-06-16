@@ -9,8 +9,8 @@ describe('AppController (e2e)', () => {
   let app: INestApplication;
   let userToken: string;
   let adminToken: string;
-  let createdUserId: string;
-  let createdTaskId: string;
+  let createdUserId: string | undefined;
+  let createdTaskId: string | undefined;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -43,22 +43,6 @@ describe('AppController (e2e)', () => {
   });
 
   // Add more tests as needed
-  afterAll(async () => {
-    if (createdTaskId) {
-      await request(app.getHttpServer())
-        .delete(`/tasks/${createdTaskId}`)
-        .set('Authorization', `Bearer ${adminToken}`);
-    }
-
-    if (createdUserId) {
-      await request(app.getHttpServer())
-        .delete(`/users/${createdUserId}`)
-        .set('Authorization', `Bearer ${adminToken}`);
-    }
-
-    await app.close();
-  });
-
   describe('Auth flow', () => {
     it('should login as admin and get token', async () => {
       const res = await request(app.getHttpServer())
@@ -199,5 +183,21 @@ describe('Task operations', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
     });
+  });
+
+   afterAll(async () => {
+    if (createdTaskId) {
+      await request(app.getHttpServer())
+        .delete(`/tasks/${createdTaskId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+    }
+
+    if (createdUserId) {
+      await request(app.getHttpServer())
+        .delete(`/users/${createdUserId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+    }
+
+    await app.close();
   });
 });
