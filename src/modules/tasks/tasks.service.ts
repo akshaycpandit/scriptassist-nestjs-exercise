@@ -24,29 +24,30 @@ export class TasksService {
 
    private readonly logger = new Logger(TasksService.name);
 
-  async create(createTaskDto: CreateTaskDto): Promise<TaskResponseDto> {
+  async create(createTaskDto: CreateTaskDto): Promise<Task> {
     // Single transaction
     return await this.tasksRepository.manager.transaction(async (manager) => {
-    const task = manager.create(Task, createTaskDto);
-    const savedTask = await manager.save(task);
+      const task = manager.create(Task, createTaskDto);
+      const savedTask = await manager.save(task);
 
-    try {
-      await this.taskQueue.add('task-status-update', {
-        taskId: savedTask.id,
-        status: savedTask.status,
-      });
-    } catch (queueError: unknown) {
+      try {
+        // Add created task id to queue for notification
+        await this.taskQueue.add('task-status-update', {
+          taskId: savedTask.id,
+          status: savedTask.status,
+        });
+      } catch (queueError: unknown) {
 
-      // Rollback or log critical error
-      this.logger.error(
-        `Failed to enqueue job for task ${savedTask.id}: ${queueError instanceof Error ? queueError.stack : queueError}`
-      );
+        // Rollback or log critical error
+        this.logger.error(
+          `Failed to enqueue job for task ${savedTask.id}: ${queueError instanceof Error ? queueError.stack : queueError}`
+        );
 
-      throw new InternalServerErrorException('Failed to process task status update while enqueuing job');
-    }
+        throw new InternalServerErrorException('Failed to process task status update while enqueuing job');
+      }
 
-    return savedTask;
-  });
+      return savedTask;
+    });
     // Inefficient implementation: creates the task but doesn't use a single transaction
     // for creating and adding to queue, potential for inconsistent state
     // const task = this.tasksRepository.create(createTaskDto);
@@ -65,6 +66,7 @@ export class TasksService {
     params: PaginationOptions & { status?: string; priority?: string }
   ): Promise<PaginatedResponse<TaskResponseDto>> {
     
+    // Extract essential params only
     const { status, priority, page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'DESC' } = params;
     
     const query = this.tasksRepository.createQueryBuilder('task');
@@ -75,6 +77,7 @@ export class TasksService {
     query.orderBy(`task.${sortBy}`, sortOrder);
     query.skip((page - 1) * limit).take(limit);
 
+    // Extract pagination essentials count from query
     let [data, total] = await query.getManyAndCount();
     
     const taskResponse = plainToInstance(TaskResponseDto, data);
@@ -98,6 +101,7 @@ export class TasksService {
 
   async getStats(): Promise<TaskStatsResponseDto> {
 
+    // Raw query for statistical data retrieval
     let stats = await this.tasksRepository
       .createQueryBuilder('task')
       .select([
@@ -105,12 +109,14 @@ export class TasksService {
         `COALESCE(SUM(CASE WHEN task.status = :completed THEN 1 ELSE 0 END), 0) as completed`,
         `COALESCE(SUM(CASE WHEN task.status = :inProgress THEN 1 ELSE 0 END), 0) as inProgress`,
         `COALESCE(SUM(CASE WHEN task.status = :pending THEN 1 ELSE 0 END), 0) as pending`,
+        `COALESCE(SUM(CASE WHEN task.status = :overdue THEN 1 ELSE 0 END), 0) as overdue`,
         `COALESCE(SUM(CASE WHEN task.priority = :high THEN 1 ELSE 0 END), 0) as highPriority`,
       ])
       .setParameters({
         completed: TaskStatus.COMPLETED,
         inProgress: TaskStatus.IN_PROGRESS,
         pending: TaskStatus.PENDING,
+        overdue: TaskStatus.OVERDUE,
         high: TaskPriority.HIGH,
       })
       .getRawOne();
@@ -127,11 +133,11 @@ export class TasksService {
     };
   }
 
-  async findOne(id: string): Promise<TaskResponseDto> {
+  async findOne(id: string): Promise<Task> {
 
     const task = await this.tasksRepository.findOne({
       where: { id },
-      // relations: ['user'],
+      // relations: ['user'], // Relations not required as userId is sufficient
     });
 
     if (!task) {
@@ -152,43 +158,43 @@ export class TasksService {
     // })) as Task;
   }
 
-  async update(id: string, updateTaskDto: UpdateTaskDto): Promise<TaskResponseDto> {
-
+  async update(id: string, updateTaskDto: UpdateTaskDto): Promise<Task> {
     // Encapsulate complete process in a transaction
     return await this.tasksRepository.manager.transaction(async (manager) => {
-    const task = await manager.findOne(Task, {
-      where: { id },
-    });
+      const task = await manager.findOne(Task, {
+        where: { id },
+      });
 
-    if (!task) {
-      throw new NotFoundException(`Task with ID ${id} not found`);
-    }
-
-    const originalStatus = task.status;
-
-    // Apply only changed fields
-    this.tasksRepository.merge(task, updateTaskDto);
-    const updatedTask = await manager.save(task);
-
-    if (originalStatus !== updatedTask.status) {
-      try {
-        await this.taskQueue.add('task-status-update', {
-          taskId: updatedTask.id,
-          status: updatedTask.status,
-        });
-      } catch (queueError: unknown) {
-
-        // Rollback or log critical error
-        this.logger.error(
-          `Failed to enqueue job for task ${updatedTask.id}: ${queueError instanceof Error ? queueError.stack : queueError}`
-        );
-
-        throw new InternalServerErrorException('Failed to process task status update while enqueuing job');
+      if (!task) {
+        throw new NotFoundException(`Task with ID ${id} not found`);
       }
-    }
 
-    return updatedTask;
-  });
+      const originalStatus = task.status;
+
+      // Apply only changed fields
+      this.tasksRepository.merge(task, updateTaskDto);
+      const updatedTask = await manager.save(task);
+
+      // Enqueue job for status update and notify
+      if (originalStatus !== updatedTask.status) {
+        try {
+          await this.taskQueue.add('task-status-update', {
+            taskId: updatedTask.id,
+            status: updatedTask.status,
+          });
+        } catch (queueError: unknown) {
+
+          // Rollback or log critical error
+          this.logger.error(
+            `Failed to enqueue job for task ${updatedTask.id}: ${queueError instanceof Error ? queueError.stack : queueError}`
+          );
+
+          throw new InternalServerErrorException('Failed to process task status update while enqueuing job');
+        }
+      }
+
+      return updatedTask;
+    });
     // Inefficient implementation: multiple database calls
     // and no transaction handling
     // const task = await this.findOne(id);
@@ -239,46 +245,73 @@ export class TasksService {
 
   async updateStatus(id: string, status: string): Promise<Task> {
     // This method will be called by the task processor
-    const task = await this.findOne(id);
-    task.status = status as any;
+    const task = await this.findOne(id);  
+
+    if(task.status === status) {
+      this.logger.log(`Task ${task.id} already has status ${status}`);    
+      return task; // No change needed (Create or Update without tassk status change)
+    }
+    task.status = status as TaskStatus;
     return this.tasksRepository.save(task);
   }
 
+  // Can be used from api as well as from task processor
   async batchProcess(taskIds: string[], action: string): Promise<{ taskIds: string, success: boolean, result?: any, error?: string }> {
-
-    let results: any[] = [];
-
-    switch (action) {
-      case 'complete':
-        const completeResult = await this.tasksRepository
-          .createQueryBuilder()
-          .update(Task)
-          .set({ status: TaskStatus.COMPLETED })
-          .whereInIds(taskIds)
-          .execute();
-
-        return {
-          taskIds: taskIds.join(', '),
-          success: true,
-          result: completeResult,
-        };
-
-      case 'delete':
-        const deleteResult = await this.tasksRepository
-          .createQueryBuilder()
-          .delete()
-          .from(Task)
-          .whereInIds(taskIds)
-          .execute();
-
-        return {
-          taskIds: taskIds.join(', '),
-          success: true,
-          result: deleteResult,
-        };
-
-      default:
-        throw new BadRequestException(`Unknown action: ${action}`);
+    try {
+      // Fixed tasks based on actions on taskIds -> Status change, delete tasks
+      switch (action) {
+        case 'complete':
+          const completeResult = await this.tasksRepository
+            .createQueryBuilder()
+            .update(Task)
+            .set({ status: TaskStatus.COMPLETED })
+            .whereInIds(taskIds)
+            .execute();
+  
+          return {
+            taskIds: taskIds.join(', '),
+            success: true,
+            result: completeResult,
+          };
+  
+        case 'delete':
+          const deleteResult = await this.tasksRepository
+            .createQueryBuilder()
+            .delete()
+            .from(Task)
+            .whereInIds(taskIds)
+            .execute();
+  
+          return {
+            taskIds: taskIds.join(', '),
+            success: true,
+            result: deleteResult,
+          };
+  
+        case 'overdue':
+          const overdueResult = await this.tasksRepository
+            .createQueryBuilder()
+            .update(Task)
+            .set({ status: TaskStatus.OVERDUE })
+            .whereInIds(taskIds)
+            .execute();
+  
+          return {
+            taskIds: taskIds.join(', '),
+            success: true,
+            result: overdueResult,
+          };
+  
+        default:
+          throw new BadRequestException(`Unknown action: ${action}`);
+      }
+    } catch (error: unknown) {
+       this.logger.error(`Batch process failed: ${error instanceof Error ? error.message : error}`);
+      return {
+        taskIds: taskIds.join(', '),
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error during batch processing',
+      };
     }
   }
 }
