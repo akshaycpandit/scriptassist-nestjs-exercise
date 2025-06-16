@@ -19,13 +19,13 @@ export class UserResponseDto {
   @ApiProperty({ example: 'user' })
   role: string;
 
-  @Expose()
-  @ApiProperty({ example: '2023-01-01T00:00:00.000Z' })
-  createdAt: Date;
+  // @Expose()
+  // @ApiProperty({ example: '2023-01-01T00:00:00.000Z' })
+  // createdAt: Date;
 
-  @Expose()
-  @ApiProperty({ example: '2023-01-01T00:00:00.000Z' })
-  updatedAt: Date;
+  // @Expose()
+  // @ApiProperty({ example: '2023-01-01T00:00:00.000Z' })
+  // updatedAt: Date;
 
   constructor(partial: Partial<UserResponseDto>) {
     Object.assign(this, partial);
