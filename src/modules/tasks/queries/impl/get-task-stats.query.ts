@@ -1,6 +1,5 @@
-export class GetTasksQuery {
+export class GetTaskStatsQuery {
   constructor(
-    public readonly queryParams: any,
     public readonly user: { id: string; role: string },
   ) {}
 }
