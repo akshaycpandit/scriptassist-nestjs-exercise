@@ -12,12 +12,12 @@ import { plainToInstance } from 'class-transformer';
 import { DeleteResult } from 'typeorm';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Roles } from '@common/decorators/roles.decorator';
+import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 
 @ApiTags('users')
 @Controller('users')
 @UseInterceptors(ClassSerializerInterceptor)
 @UseGuards(JwtAuthGuard, RateLimitGuard, RolesGuard)
-@Roles('ADMIN')
 @RateLimit({ limit: 50, windowMs: 60000 })
 @ApiBearerAuth()
 export class UsersController {
@@ -25,6 +25,7 @@ export class UsersController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new user' })
+  @Roles('ADMIN')
   async create(@Body() createUserDto: CreateUserDto): Promise<HttpResponse<UserResponseDto>> {
     const createdUser = await this.usersService.create(createUserDto);
 
@@ -40,6 +41,7 @@ export class UsersController {
 
   @Get()
   @ApiOperation({ summary: 'Find all users' })
+  @Roles('ADMIN')
   async findAll(): Promise<HttpResponse<UserResponseDto[]>> {
     const allusers = await this.usersService.findAll();
 
@@ -55,6 +57,7 @@ export class UsersController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Find a user by id' })
+  @Roles('ADMIN')
   async findOne(@Param('id') id: string): Promise<HttpResponse<UserResponseDto>> {
     const eachUser = await this.usersService.findOne(id);
 
@@ -70,8 +73,9 @@ export class UsersController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a user' })
-  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto): Promise<HttpResponse<UserResponseDto>> {
-    const updatedUser = await this.usersService.update(id, updateUserDto);
+  @Roles('ADMIN', 'USER')
+  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @CurrentUser() user: { id: string; role: string }): Promise<HttpResponse<UserResponseDto>> {
+    const updatedUser = await this.usersService.update(id, updateUserDto, user);
 
     const updatedUserResponseDto = plainToInstance(UserResponseDto, updatedUser);
 
@@ -85,6 +89,7 @@ export class UsersController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a user' })
+  @Roles('ADMIN')
   async remove(@Param('id') id: string): Promise<HttpResponse<DeleteResult>> {
     const deletedUser = await this.usersService.remove(id);
 
