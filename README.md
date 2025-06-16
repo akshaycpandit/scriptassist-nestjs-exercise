@@ -1,2 +1,0 @@
-# scriptassist-nestjs-exercise
-Assessment
