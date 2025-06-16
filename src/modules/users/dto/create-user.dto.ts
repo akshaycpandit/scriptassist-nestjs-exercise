@@ -18,7 +18,6 @@ export class CreateUserDto {
   @ApiProperty({ example: 'Password123!' })
   @IsString()
   @IsNotEmpty()
-  @MinLength(6)
   @MaxLength(255)
   password: string;
 
