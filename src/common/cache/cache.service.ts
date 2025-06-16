@@ -1,6 +1,6 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Cache } from 'cache-manager';
+import type { Cache } from 'cache-manager';
 import { formatError } from 'src/utils/error.util';
 // Inefficient in-memory cache implementation with multiple problems:
 // 1. No distributed cache support (fails in multi-instance deployments)

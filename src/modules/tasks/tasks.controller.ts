@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, HttpException, HttpStatus, UseInterceptors, ClassSerializerInterceptor, HttpCode } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query, HttpStatus, UseInterceptors, ClassSerializerInterceptor, HttpCode } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
@@ -6,7 +6,7 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import { DeleteResult } from 'typeorm';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
-import { PaginatedResponse, PaginationOptions } from '../../types/pagination.interface';
+import type { PaginatedResponse, PaginationOptions } from '../../types/pagination.interface';
 import { HttpResponse } from '../../types/http-response.interface';
 
 // This guard needs to be implemented or imported from the correct location
@@ -143,6 +143,7 @@ export class TasksController {
   @Post('batch')
   @ApiOperation({ summary: 'Batch process multiple tasks' })
   @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
   async batchProcess(@Body() operations: BatchProcessDto): Promise<HttpResponse<{ taskIds: string; success: boolean; result?: any; error?: string }>> {
 
     const { tasks: taskIds, action } = operations;

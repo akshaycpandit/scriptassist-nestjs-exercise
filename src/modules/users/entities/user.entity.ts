@@ -26,7 +26,7 @@ export class User {
   role: UserRole;
 
   @OneToMany(() => Task, (task) => task.user)
-  tasks: Task[];
+  tasks!: Awaited<Task[]>;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
