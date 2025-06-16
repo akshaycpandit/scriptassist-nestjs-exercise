@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DeleteResult, Repository } from 'typeorm';
 import { Task } from './entities/task.entity';
@@ -12,6 +12,7 @@ import { TaskPriority } from './enums/task-priority.enum';
 import { TaskResponseDto } from './dto/task-response.dto';
 import { plainToInstance } from 'class-transformer';
 import { TaskStatsResponseDto } from './dto/task-stats-response.dto';
+import { isUndefined } from 'util';
 
 @Injectable()
 export class TasksService {
@@ -48,22 +49,11 @@ export class TasksService {
 
       return savedTask;
     });
-    // Inefficient implementation: creates the task but doesn't use a single transaction
-    // for creating and adding to queue, potential for inconsistent state
-    // const task = this.tasksRepository.create(createTaskDto);
-    // const savedTask = await this.tasksRepository.save(task);
-
-    // Add to queue without waiting for confirmation or handling errors
-    // this.taskQueue.add('task-status-update', {
-    //   taskId: savedTask.id,
-    //   status: savedTask.status,
-    // });
-
-    // return savedTask;
   }
 
   async findAll(
-    params: PaginationOptions & { status?: string; priority?: string }
+    params: PaginationOptions & { status?: string; priority?: string },
+    currentUser: { id: string; role: string }
   ): Promise<PaginatedResponse<TaskResponseDto>> {
     
     // Extract essential params only
@@ -73,6 +63,9 @@ export class TasksService {
 
     if (status) query.andWhere('task.status = :status', { status });
     if (priority) query.andWhere('task.priority = :priority', { priority });
+
+    // if loggedIn user is not admin, filter by userId
+    if(currentUser.role !== 'ADMIN') query.andWhere('task.userId = :userId', { userId: currentUser.id });
 
     query.orderBy(`task.${sortBy}`, sortOrder);
     query.skip((page - 1) * limit).take(limit);
@@ -91,18 +84,12 @@ export class TasksService {
         totalPages: Math.ceil(total / limit),
       },
     };
-
-    // Inefficient implementation: retrieves all tasks without pagination
-    // and loads all relations, causing potential performance issues
-    // return this.tasksRepository.find({
-    //   relations: ['user'],
-    // });
   }
 
-  async getStats(): Promise<TaskStatsResponseDto> {
+  async getStats(currentUser: { id: string; role: string }): Promise<TaskStatsResponseDto> {
 
-    // Raw query for statistical data retrieval
-    let stats = await this.tasksRepository
+    // Raw query for statistical data retrieval/aggregation
+    const query = this.tasksRepository
       .createQueryBuilder('task')
       .select([
         'COUNT(*) as total',
@@ -118,10 +105,15 @@ export class TasksService {
         pending: TaskStatus.PENDING,
         overdue: TaskStatus.OVERDUE,
         high: TaskPriority.HIGH,
-      })
-      .getRawOne();
+      });
 
-    stats = plainToInstance(TaskStatsResponseDto, stats);
+      // if loggedIn user is not admin, filter by userId
+      if (currentUser.role !== 'admin') {
+        query.andWhere('task.userId = :userId', { userId: currentUser.id });
+      }
+
+      let stats = await query.getRawOne();
+      stats = plainToInstance(TaskStatsResponseDto, stats);
 
     // Cast values to number because getRawOne returns string values from DB
     return {
@@ -129,47 +121,72 @@ export class TasksService {
       completed: parseInt(stats.completed, 10),
       inProgress: parseInt(stats.inprogress, 10),
       pending: parseInt(stats.pending, 10),
+      overdue: parseInt(stats.overdue, 10),
       highPriority: parseInt(stats.highpriority, 10),
     };
   }
 
-  async findOne(id: string): Promise<Task> {
+  async findOne(id: string, currentUser: { id: string; role: string }): Promise<Task> {
+    // Single db call with conditional filtering based on user role 
+    const query = this.tasksRepository.createQueryBuilder('task')
+      .where('task.id = :id', { id });
 
-    const task = await this.tasksRepository.findOne({
-      where: { id },
-      // relations: ['user'], // Relations not required as userId is sufficient
-    });
+    // if loggedIn user is not admin, filter by userId
+    if (currentUser.role !== 'ADMIN') {
+      query.andWhere('task.userId = :userId', { userId: currentUser.id });
+    }
+
+    const task = await query.getOne();
 
     if (!task) {
-      throw new NotFoundException(`Task with ID ${id} not found`);
+      throw new NotFoundException(`Task with ID ${id} not found or access denied`);
     }
 
     return task;
-    // Inefficient implementation: two separate database calls
-    // const count = await this.tasksRepository.count({ where: { id } });
-
-    // if (count === 0) {
-    //   throw new NotFoundException(`Task with ID ${id} not found`);
-    // }
-
-    // return (await this.tasksRepository.findOne({
-    //   where: { id },
-    //   relations: ['user'],
-    // })) as Task;
   }
 
-  async update(id: string, updateTaskDto: UpdateTaskDto): Promise<Task> {
+  async update(
+    id: string, 
+    updateTaskDto: UpdateTaskDto,
+    currentUser: { id: string; role: string }
+  ): Promise<Task> {
     // Encapsulate complete process in a transaction
     return await this.tasksRepository.manager.transaction(async (manager) => {
-      const task = await manager.findOne(Task, {
-        where: { id },
-      });
+
+      // Build where condition for ownership
+      const where: any = { id };
+      if (currentUser.role !== 'ADMIN') {
+        where.userId = currentUser.id;
+      }
+      
+      const task = await manager.findOne(Task, { where });
+
+      // const task = await manager.findOne(Task, {
+      //   where: { id },
+      // });
 
       if (!task) {
-        throw new NotFoundException(`Task with ID ${id} not found`);
+        throw new NotFoundException(`Task with ID ${id} not found or you are not authorized to update it`);
       }
 
       const originalStatus = task.status;
+
+      // Restrict update fields based on role
+      let allowedUpdateData: Partial<UpdateTaskDto> = {};
+      if (currentUser.role === 'ADMIN') {
+        allowedUpdateData = updateTaskDto; // Admins can update all fields
+      } else {
+        // Only allow status change for non-admin
+        if ('status' in updateTaskDto) {
+          allowedUpdateData.status = updateTaskDto.status;
+        }
+
+        // Throw error if user tries to change other fields
+        const illegalFields = Object.keys(updateTaskDto).filter(k => k !== 'status');
+        if (illegalFields.length > 0) {
+          throw new ForbiddenException(`You are only allowed to update status. Illegal fields: ${illegalFields.join(', ')}`);
+        }
+      }
 
       // Apply only changed fields
       this.tasksRepository.merge(task, updateTaskDto);
@@ -195,30 +212,6 @@ export class TasksService {
 
       return updatedTask;
     });
-    // Inefficient implementation: multiple database calls
-    // and no transaction handling
-    // const task = await this.findOne(id);
-
-    // const originalStatus = task.status;
-
-    // Directly update each field individually
-    // if (updateTaskDto.title) task.title = updateTaskDto.title;
-    // if (updateTaskDto.description) task.description = updateTaskDto.description;
-    // if (updateTaskDto.status) task.status = updateTaskDto.status;
-    // if (updateTaskDto.priority) task.priority = updateTaskDto.priority;
-    // if (updateTaskDto.dueDate) task.dueDate = updateTaskDto.dueDate;
-
-    // const updatedTask = await this.tasksRepository.save(task);
-
-    // Add to queue if status changed, but without proper error handling
-    // if (originalStatus !== updatedTask.status) {
-    //   this.taskQueue.add('task-status-update', {
-    //     taskId: updatedTask.id,
-    //     status: updatedTask.status,
-    //   });
-    // }
-
-    // return updatedTask;
   }
 
   async remove(id: string): Promise<DeleteResult> {
@@ -230,10 +223,6 @@ export class TasksService {
       throw new NotFoundException(`Task with ID ${id} not found`);
     }
     return deleteResult;
-    
-    // Inefficient implementation: two separate database calls
-    // const task = await this.findOne(id);
-    // await this.tasksRepository.remove(task);
   }
 
   // FindAll does the same operation, this function is redundant
@@ -245,7 +234,7 @@ export class TasksService {
 
   async updateStatus(id: string, status: string): Promise<Task> {
     // This method will be called by the task processor
-    const task = await this.findOne(id);  
+    const task = await this.findOne(id, { id: '', role: 'ADMIN' }); // Admin role to bypass userId check
 
     if(task.status === status) {
       this.logger.log(`Task ${task.id} already has status ${status}`);    
