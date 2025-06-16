@@ -7,6 +7,7 @@ import * as bcrypt from 'bcrypt';
 import { UserRole } from '@modules/users/enums/user-role.enum';
 import { User } from '@modules/users/entities/user.entity';
 import { UserResponseDto } from '@modules/users/dto/user-response.dto';
+import { plainToInstance } from 'class-transformer';
 
 @Injectable()
 export class AuthService {
@@ -30,9 +31,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid password');
     }
 
+    const userLoginResponseDto = plainToInstance(UserResponseDto, user);
+
     return {
-      access_token: this.jwtService.sign(user),
-      user: new UserResponseDto(user),
+      access_token: this.generateToken(user),
+      user: userLoginResponseDto,
     };
   }
 
@@ -47,8 +50,10 @@ export class AuthService {
 
     const token = this.generateToken(user);
 
+    const userRegisterResponseDto = plainToInstance(UserResponseDto, user);
+
     return {
-      user: new UserResponseDto(user),
+      user: userRegisterResponseDto,
       token,
     };
   }
