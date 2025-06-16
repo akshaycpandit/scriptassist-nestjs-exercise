@@ -19,25 +19,24 @@ import { plainToInstance } from 'class-transformer';
 import { TaskStatsResponseDto } from './dto/task-stats-response.dto';
 import { Roles } from '@common/decorators/roles.decorator';
 import { RolesGuard } from '@common/guards/roles.guard';
+import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 
 @ApiTags('tasks')
 @Controller('tasks')
 @UseInterceptors(ClassSerializerInterceptor)
 @UseGuards(JwtAuthGuard, RateLimitGuard, RolesGuard)
-@Roles('ADMIN')
+@Roles('ADMIN', 'USER')
 @RateLimit({ limit: 100, windowMs: 60000 })
 @ApiBearerAuth()
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
-    // Anti-pattern: Controller directly accessing repository
-    // @InjectRepository(Task)
-    // private taskRepository: Repository<Task>
-    // Now service will handle all database interactions
+    // Repository moved to service layer
   ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new task' })
+  @Roles('ADMIN')
   async create(@Body() createTaskDto: CreateTaskDto): Promise<HttpResponse<TaskResponseDto>> {
     const task = await this.tasksService.create(createTaskDto);
     
@@ -59,11 +58,13 @@ export class TasksController {
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'sortBy', required: false })
   @ApiQuery({ name: 'sortOrder', required: false })
+  @Roles('ADMIN', 'USER')
   async findAll(
-    @Query() queryParams: PaginationOptions & { status?: string; priority?: string }
+    @Query() queryParams: PaginationOptions & { status?: string; priority?: string },
+    @CurrentUser() user: { id: string; role: string }
   ): Promise<HttpResponse<PaginatedResponse<TaskResponseDto>>> {
 
-    let paginatedTasks = await this.tasksService.findAll(queryParams);
+    let paginatedTasks = await this.tasksService.findAll(queryParams, user);
     paginatedTasks.data = plainToInstance(TaskResponseDto, paginatedTasks.data);
 
     return {
@@ -72,43 +73,16 @@ export class TasksController {
       data: paginatedTasks,
       message: 'Tasks fetched successfully',
     };
-    // return this.tasksService.findAll( { status, priority }, paginationOptions);
-    // Inefficient approach: Inconsistent pagination handling
-    // if (page && !limit) {
-    //   limit = 10; // Default limit
-    // }
-    
-    // // Inefficient processing: Manual filtering instead of using repository
-    // let tasks = await this.tasksService.findAll();
-    
-    // // Inefficient filtering: In-memory filtering instead of database filtering
-    // if (status) {
-    //   tasks = tasks.filter(task => task.status === status as TaskStatus);
-    // }
-    
-    // if (priority) {
-    //   tasks = tasks.filter(task => task.priority === priority as TaskPriority);
-    // }
-    
-    // // Inefficient pagination: In-memory pagination
-    // if (page && limit) {
-    //   const startIndex = (page - 1) * limit;
-    //   const endIndex = page * limit;
-    //   tasks = tasks.slice(startIndex, endIndex);
-    // }
-    
-    // return {
-    //   data: tasks,
-    //   count: tasks.length,
-    //   // Missing metadata for proper pagination
-    // };
   }
 
   @Get('stats')
   @ApiOperation({ summary: 'Get task statistics' })
-  async getStats(): Promise<HttpResponse<TaskStatsResponseDto>> {
+  @Roles('ADMIN', 'USER')
+  async getStats(
+    @CurrentUser() user: { id: string; role: string }
+  ): Promise<HttpResponse<TaskStatsResponseDto>> {
 
-    const stats = await this.tasksService.getStats();
+    const stats = await this.tasksService.getStats(user);
     const statsResponseDto = plainToInstance(TaskStatsResponseDto, stats);
 
     return {
@@ -117,27 +91,14 @@ export class TasksController {
       data: statsResponseDto,
       message: 'Task statistics retrieved successfully',
     };
-
-    // Inefficient approach: N+1 query problem
-    // const tasks = await this.taskRepository.find();
-    
-    // Inefficient computation: Should be done with SQL aggregation
-    // const statistics = {
-    //   total: tasks.length,
-    //   completed: tasks.filter(t => t.status === TaskStatus.COMPLETED).length,
-    //   inProgress: tasks.filter(t => t.status === TaskStatus.IN_PROGRESS).length,
-    //   pending: tasks.filter(t => t.status === TaskStatus.PENDING).length,
-    //   highPriority: tasks.filter(t => t.priority === TaskPriority.HIGH).length,
-    // };
-    
-    // return statistics;
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Find a task by ID' })
-  async findOne(@Param('id') id: string): Promise<HttpResponse<TaskResponseDto>> {
+  @Roles('ADMIN', 'USER')
+  async findOne(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }): Promise<HttpResponse<TaskResponseDto>> {
 
-    const task = await this.tasksService.findOne(id);
+    const task = await this.tasksService.findOne(id, user);
     const taskResponseDto = plainToInstance(TaskResponseDto, task);
 
     return {
@@ -146,23 +107,14 @@ export class TasksController {
       data: taskResponseDto,
       message: 'Task fetched successfully',
     };
-
-    // const task = await this.tasksService.findOne(id);
-    
-    // if (!task) {
-    //   // Inefficient error handling: Revealing internal details
-    //   throw new HttpException(`Task with ID ${id} not found in the database`, HttpStatus.NOT_FOUND);
-    // }
-    
-    // return task;
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a task' })
-  async update(@Param('id') id: string, @Body() updateTaskDto: UpdateTaskDto): Promise<HttpResponse<TaskResponseDto>> {
-    // No validation if task exists before update
+  @Roles('ADMIN', 'USER')
+  async update(@Param('id') id: string, @Body() updateTaskDto: UpdateTaskDto, @CurrentUser() user: { id: string; role: string }): Promise<HttpResponse<TaskResponseDto>> {
     // Validation moved to service layer
-    const updatedTask = await this.tasksService.update(id, updateTaskDto);
+    const updatedTask = await this.tasksService.update(id, updateTaskDto, user);
     const updatedTaskResponseDto = plainToInstance(TaskResponseDto, updatedTask);
     return {
       statusCode: HttpStatus.OK,
@@ -174,9 +126,9 @@ export class TasksController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a task' })
+  @Roles('ADMIN')
   async remove(@Param('id') id: string): Promise<HttpResponse<DeleteResult>>  {
-    // No validation if task exists before removal
-    // No status code returned for success
+    // Validation moved to service layer
     const removedTask = await this.tasksService.remove(id);
     const removedTaskResponseDto = plainToInstance(DeleteResult, removedTask);
 
@@ -190,6 +142,7 @@ export class TasksController {
 
   @Post('batch')
   @ApiOperation({ summary: 'Batch process multiple tasks' })
+  @Roles('ADMIN')
   async batchProcess(@Body() operations: BatchProcessDto): Promise<HttpResponse<{ taskIds: string; success: boolean; result?: any; error?: string }>> {
 
     const { tasks: taskIds, action } = operations;
@@ -201,37 +154,5 @@ export class TasksController {
       message: `Batch ${action} operation completed`,
       data: results,
     };
-    // Inefficient batch processing: Sequential processing instead of bulk operations
-    // const { tasks: taskIds, action } = operations;
-    // const results = [];
-    
-    // N+1 query problem: Processing tasks one by one
-    // for (const taskId of taskIds) {
-    //   try {
-    //     let result;
-        
-    //     switch (action) {
-    //       case 'complete':
-    //         result = await this.tasksService.update(taskId, { status: TaskStatus.COMPLETED });
-    //         break;
-    //       case 'delete':
-    //         result = await this.tasksService.remove(taskId);
-    //         break;
-    //       default:
-    //         throw new HttpException(`Unknown action: ${action}`, HttpStatus.BAD_REQUEST);
-    //     }
-        
-    //     results.push({ taskId, success: true, result });
-    //   } catch (error) {
-    //     // Inconsistent error handling
-    //     results.push({ 
-    //       taskId, 
-    //       success: false, 
-    //       error: error instanceof Error ? error.message : 'Unknown error'
-    //     });
-    //   }
-    // }
-    
-    // return results;
   }
 } 
