@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
@@ -18,6 +18,11 @@ export class AuthService {
 
   async login(loginDto: LoginDto): Promise<{ user: UserResponseDto; access_token: string }> {
     const { email, password } = loginDto;
+
+    // Validate password length
+    if(password && password.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters long');
+    }
 
     const user = await this.usersService.findByEmail(email);
     
@@ -44,6 +49,11 @@ export class AuthService {
 
     if (existingUser) {
       throw new UnauthorizedException('Email already exists');
+    }
+
+    // Validate password length
+    if( registerDto.password && registerDto.password.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters long');
     }
 
     const user = await this.usersService.create(registerDto);

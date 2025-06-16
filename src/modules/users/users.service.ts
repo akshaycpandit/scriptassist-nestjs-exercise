@@ -56,8 +56,8 @@ export class UsersService {
     currentUser: { id: string, role: string }
   ): Promise<User> {
     // Validate password length
-    if( updateUserDto?.password && updateUserDto.password.length < 8) {
-      throw new BadRequestException('Password must be at least 8 characters long');
+    if( updateUserDto?.password && updateUserDto.password.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters long');
     }
 
     const existingUser = await this.findOne(id);
