@@ -3,9 +3,7 @@ import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DeleteResult, Repository } from 'typeorm';
-import { Task } from './entities/task.entity';
+import { DeleteResult } from 'typeorm';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { PaginatedResponse, PaginationOptions } from '../../types/pagination.interface';
@@ -26,7 +24,7 @@ import { RolesGuard } from '@common/guards/roles.guard';
 @Controller('tasks')
 @UseInterceptors(ClassSerializerInterceptor)
 @UseGuards(JwtAuthGuard, RateLimitGuard, RolesGuard)
-@Roles('USER')
+@Roles('ADMIN')
 @RateLimit({ limit: 100, windowMs: 60000 })
 @ApiBearerAuth()
 export class TasksController {
@@ -42,11 +40,13 @@ export class TasksController {
   @ApiOperation({ summary: 'Create a new task' })
   async create(@Body() createTaskDto: CreateTaskDto): Promise<HttpResponse<TaskResponseDto>> {
     const task = await this.tasksService.create(createTaskDto);
+    
+    const taskResponseDto = plainToInstance(TaskResponseDto, task);
 
     return {
       statusCode: HttpStatus.CREATED,
       success: true,
-      data: task,
+      data: taskResponseDto,
       message: 'Task created successfully',
     };
   }
@@ -109,11 +109,12 @@ export class TasksController {
   async getStats(): Promise<HttpResponse<TaskStatsResponseDto>> {
 
     const stats = await this.tasksService.getStats();
+    const statsResponseDto = plainToInstance(TaskStatsResponseDto, stats);
 
     return {
       statusCode: HttpStatus.OK,
       success: true,
-      data: stats,
+      data: statsResponseDto,
       message: 'Task statistics retrieved successfully',
     };
 
@@ -137,11 +138,12 @@ export class TasksController {
   async findOne(@Param('id') id: string): Promise<HttpResponse<TaskResponseDto>> {
 
     const task = await this.tasksService.findOne(id);
+    const taskResponseDto = plainToInstance(TaskResponseDto, task);
 
     return {
       statusCode: HttpStatus.OK,
       success: true,
-      data: task,
+      data: taskResponseDto,
       message: 'Task fetched successfully',
     };
 
@@ -161,12 +163,12 @@ export class TasksController {
     // No validation if task exists before update
     // Validation moved to service layer
     const updatedTask = await this.tasksService.update(id, updateTaskDto);
-
+    const updatedTaskResponseDto = plainToInstance(TaskResponseDto, updatedTask);
     return {
       statusCode: HttpStatus.OK,
       success: true,
       message: `Task with ID ${id} updated successfully`,
-      data: updatedTask,
+      data: updatedTaskResponseDto,
     };
   }
 
@@ -176,12 +178,13 @@ export class TasksController {
     // No validation if task exists before removal
     // No status code returned for success
     const removedTask = await this.tasksService.remove(id);
+    const removedTaskResponseDto = plainToInstance(DeleteResult, removedTask);
 
     return {
       statusCode: HttpStatus.OK,
       success: true,
       message: `Task with ID ${id} deleted successfully`,
-      data: removedTask,
+      data: removedTaskResponseDto,
     };
   }
 
