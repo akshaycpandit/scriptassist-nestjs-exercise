@@ -14,23 +14,28 @@ export class UsersService {
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
-    // Before creating a user, check if email already exists
+    // Validate password length
+    if(createUserDto.password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters long');
+    }
     const existingUser = await this.findByEmail(createUserDto.email);
-
+    
+    // Before creating a user, check if email already exists
     if (existingUser) {
       throw new UnauthorizedException('Email already exists');
     }
 
+    // Hash the password before saving
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    const user = this.usersRepository.create({
+    const user = await this.usersRepository.create({
       ...createUserDto,
       password: hashedPassword,
     });
-    return this.usersRepository.save(user);
+    return await this.usersRepository.save(user);
   }
 
-  findAll(): Promise<User[]> {
-    return this.usersRepository.find();
+  async findAll(): Promise<User[]> {
+    return await this.usersRepository.find();
   }
 
   async findOne(id: string): Promise<User> {
@@ -42,22 +47,42 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
+    return await this.usersRepository.findOne({ where: { email } });
   }
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
-    const user = await this.findOne(id);
+    // Validate password length
+    if( updateUserDto?.password && updateUserDto.password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters long');
+    }
+
+    const existingUser = await this.findOne(id);
+
+    // Check if user exists before update
+    if( !existingUser) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+
+     // Before creating a user, check if email already exists
+    if (existingUser.email === updateUserDto.email) {
+      throw new UnauthorizedException('Email already exists');
+    }
     
     if (updateUserDto.password) {
       updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
+
+      // Old password check
+      if( updateUserDto.password === existingUser.password) {
+        throw new BadRequestException('New password cannot be the same as the old password');
+      }
     }
     
-    this.usersRepository.merge(user, updateUserDto);
-    return this.usersRepository.save(user);
+    this.usersRepository.merge(existingUser, updateUserDto);
+    return await this.usersRepository.save(existingUser);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string): Promise<User> {
     const user = await this.findOne(id);
-    await this.usersRepository.remove(user);
+    return await this.usersRepository.remove(user);
   }
 } 
