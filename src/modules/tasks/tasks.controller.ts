@@ -8,14 +8,9 @@ import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import type { PaginatedResponse, PaginationOptions } from '../../types/pagination.interface';
 import { HttpResponse } from '../../types/http-response.interface';
-
-// This guard needs to be implemented or imported from the correct location
-// We're intentionally leaving it as a non-working placeholder
-// class JwtAuthGuard {}
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // Correct import
 import { BatchProcessDto } from './dto/batch-process.dto';
 import { TaskResponseDto } from './dto/task-response.dto';
-import { plainToInstance } from 'class-transformer';
 import { TaskStatsResponseDto } from './dto/task-stats-response.dto';
 import { Roles } from '@common/decorators/roles.decorator';
 import { RolesGuard } from '@common/guards/roles.guard';
@@ -24,6 +19,11 @@ import { CreateTaskCommand } from './commands/impl/create-task.command';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import { GetTasksQuery } from './queries/impl/get-tasks.query';
 import { GetTaskStatsQuery } from './queries/impl/get-task-stats.query';
+import { GetTaskByIdQuery } from './queries/impl/get-task-by-id.query';
+import { UpdateTaskCommand } from './commands/impl/update-task.command';
+import { DeleteTaskCommand } from './commands/impl/delete-task.command';
+import { BatchProcessCommand } from './commands/impl/batch-process.command';
+import { BatchProcessResponseDto } from './dto/batch-process-response.dto';
 
 @ApiTags('tasks')
 @Controller('tasks')
@@ -34,7 +34,7 @@ import { GetTaskStatsQuery } from './queries/impl/get-task-stats.query';
 @ApiBearerAuth()
 export class TasksController {
   constructor(
-    private readonly tasksService: TasksService,
+    // private readonly tasksService: TasksService, // TasksService moved to CQRS pattern
     private readonly commandBus: CommandBus, // CommandBus for CQRS pattern
     private readonly queryBus: QueryBus, // QueryBus for CQRS pattern
     // Repository moved to service layer
@@ -112,13 +112,17 @@ export class TasksController {
   @Roles('ADMIN', 'USER')
   async findOne(@Param('id') id: string, @CurrentUser() user: { id: string; role: string }): Promise<HttpResponse<TaskResponseDto>> {
 
-    const task = await this.tasksService.findOne(id, user);
-    const taskResponseDto = plainToInstance(TaskResponseDto, task);
+    // const task = await this.tasksService.findOne(id, user);
+    // const taskResponseDto = plainToInstance(TaskResponseDto, task);
+
+    const taskResponse = await this.queryBus.execute(
+      new GetTaskByIdQuery(id, user)
+    );
 
     return {
       statusCode: HttpStatus.OK,
       success: true,
-      data: taskResponseDto,
+      data: taskResponse,
       message: 'Task fetched successfully',
     };
   }
@@ -128,8 +132,12 @@ export class TasksController {
   @Roles('ADMIN', 'USER')
   async update(@Param('id') id: string, @Body() updateTaskDto: UpdateTaskDto, @CurrentUser() user: { id: string; role: string }): Promise<HttpResponse<TaskResponseDto>> {
     // Validation moved to service layer
-    const updatedTask = await this.tasksService.update(id, updateTaskDto, user);
-    const updatedTaskResponseDto = plainToInstance(TaskResponseDto, updatedTask);
+    // const updatedTask = await this.tasksService.update(id, updateTaskDto, user);
+    // const updatedTaskResponseDto = plainToInstance(TaskResponseDto, updatedTask);
+    const updatedTaskResponseDto = await this.commandBus.execute(
+      new UpdateTaskCommand(id, updateTaskDto, user)
+    );
+
     return {
       statusCode: HttpStatus.OK,
       success: true,
@@ -143,14 +151,17 @@ export class TasksController {
   @Roles('ADMIN')
   async remove(@Param('id') id: string): Promise<HttpResponse<DeleteResult>>  {
     // Validation moved to service layer
-    const removedTask = await this.tasksService.remove(id);
-    const removedTaskResponseDto = plainToInstance(DeleteResult, removedTask);
+    // const removedTask = await this.tasksService.remove(id);
+    // const removedTaskResponseDto = plainToInstance(DeleteResult, removedTask);
+    const removedTaskResponse = await this.commandBus.execute(
+      new DeleteTaskCommand(id)
+    );
 
     return {
       statusCode: HttpStatus.OK,
       success: true,
       message: `Task with ID ${id} deleted successfully`,
-      data: removedTaskResponseDto,
+      data: removedTaskResponse,
     };
   }
 
@@ -158,10 +169,13 @@ export class TasksController {
   @ApiOperation({ summary: 'Batch process multiple tasks' })
   @Roles('ADMIN')
   @HttpCode(HttpStatus.OK)
-  async batchProcess(@Body() operations: BatchProcessDto): Promise<HttpResponse<{ taskIds: string; success: boolean; result?: any; error?: string }>> {
+  async batchProcess(@Body() operations: BatchProcessDto): Promise<HttpResponse<BatchProcessResponseDto>> {
 
     const { tasks: taskIds, action } = operations;
-    const results = await this.tasksService.batchProcess(taskIds, action);
+    // const results = await this.tasksService.batchProcess(taskIds, action);
+    const results = await this.commandBus.execute(
+      new BatchProcessCommand(taskIds, action)
+    );
 
     return {
       statusCode: HttpStatus.OK,
