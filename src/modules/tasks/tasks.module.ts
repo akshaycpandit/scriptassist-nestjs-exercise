@@ -8,16 +8,22 @@ import { CommandHandler, CqrsModule } from '@nestjs/cqrs';
 import { CreateTaskHandler } from './commands/handlers/create-task.handler';
 import { GetTasksHandler } from './queries/handlers/get-tasks.handler';
 import { GetTaskStatsHandler } from './queries/handlers/get-tasks-stats.handler';
+import { UpdateTaskHandler } from './commands/handlers/update-task.handler';
+import { DeleteTaskHandler } from './commands/handlers/delete-task.handler';
+import { BatchProcessHandler } from './commands/handlers/batch-process.handler';
+import { GetTaskByIdHandler } from './queries/handlers/get-task-by-id.handler';
 
 const commandHandlers = [
   CreateTaskHandler,
-  // Add others like UpdateTaskHandler, DeleteTaskHandler, BatchProcessHandler
+  UpdateTaskHandler,
+  DeleteTaskHandler,
+  BatchProcessHandler,
 ];
 
 const queryHandlers = [
   GetTasksHandler,
   GetTaskStatsHandler,
-  // Add others like GetTaskByIdHandler, GetStatsHandler
+  GetTaskByIdHandler,
 ];
 @Module({
   imports: [
