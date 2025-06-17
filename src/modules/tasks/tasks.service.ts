@@ -13,6 +13,7 @@ import { TaskResponseDto } from './dto/task-response.dto';
 import { plainToInstance } from 'class-transformer';
 import { TaskStatsResponseDto } from './dto/task-stats-response.dto';
 import { isUndefined } from 'util';
+import { BatchProcessResponseDto } from './dto/batch-process-response.dto';
 
 @Injectable()
 export class TasksService {
@@ -245,7 +246,7 @@ export class TasksService {
   }
 
   // Can be used from api as well as from task processor
-  async batchProcess(taskIds: string[], action: string): Promise<{ taskIds: string, success: boolean, result?: any, error?: string }> {
+  async batchProcess(taskIds: string[], action: string): Promise<BatchProcessResponseDto> {
     try {
       // Fixed tasks based on actions on taskIds -> Status change, delete tasks
       switch (action) {
